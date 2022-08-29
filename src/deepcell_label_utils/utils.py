@@ -24,3 +24,158 @@
 # limitations under the License.
 # ==============================================================================
 """Label utils"""
+
+import json
+import geojson
+import numpy as np
+import cv2
+
+from shapely.geometry import MultiPolygon, Polygon, Point, mapping
+from collections import defaultdict
+
+
+def mask_to_polygons(mask, epsilon=1e-3, min_area=10., approx=True):
+    """Convert a mask ndarray (binarized image) to Multipolygons"""
+
+    # first, find contours with cv2: it's much faster than shapely
+    contours, hierarchy = cv2.findContours(mask,
+                                  cv2.RETR_CCOMP,
+                                  cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours and approx:
+        contours = [cv2.approxPolyDP(cnt, epsilon * cv2.arcLength(cnt, True), True)
+                    for cnt in contours]
+
+    if not contours:
+        return MultiPolygon()
+
+    # now messy stuff to associate parent and child contours
+    cnt_children = defaultdict(list)
+    child_contours = set()
+    assert hierarchy.shape[0] == 1
+
+    # http://docs.opencv.org/3.1.0/d9/d8b/tutorial_py_contours_hierarchy.html
+    for idx, (_, _, _, parent_idx) in enumerate(hierarchy[0]):
+        if parent_idx != -1:
+            child_contours.add(idx)
+            cnt_children[parent_idx].append(contours[idx])
+
+    # create actual polygons filtering by area (removes artifacts)
+    all_polygons = []
+    for idx, cnt in enumerate(contours):
+        if idx not in child_contours and cv2.contourArea(cnt) >= min_area:
+            assert cnt.shape[1] == 1
+            poly = Polygon(
+                shell=cnt[:, 0, :],
+                holes=[c[:, 0, :] for c in cnt_children.get(idx, [])
+                       if cv2.contourArea(c) >= min_area])
+            all_polygons.append(poly)
+    all_polygons = MultiPolygon(all_polygons)
+
+    return all_polygons
+
+
+def polygons_to_mask(polygons, im_size):
+    """Convert a polygon or multipolygon list back to
+       an image mask ndarray"""
+    img_mask = np.zeros(im_size, np.uint8)
+    if not polygons:
+        return img_mask
+
+    # function to round and convert to int
+    def int_coords(x):
+        return np.array(x).round().astype(np.int32)
+
+    exteriors = [int_coords(poly.exterior.coords) for poly in polygons.geoms]
+    interiors = [int_coords(pi.coords) for poly in polygons.geoms
+                 for pi in poly.interiors]
+    cv2.fillPoly(img_mask, exteriors, 1)
+    cv2.fillPoly(img_mask, interiors, 0)
+    return img_mask
+
+
+class SpatialLabelConverter(object):
+    """Label converter class for DeepCell Label label format. Converts
+    DCL labels into binary masks, centroids, bboxes, and polygons"""
+
+    def __init__(self, X, y, segments):
+        self.X = X
+        self.y = y
+        self.segments = segments
+
+        # Get list of segments
+        object_ids = self.get_object_ids()
+        labels = {}
+
+        # Iterate over all segments and convert to the new label format
+        for object_id in object_ids:
+            seg = self.segments_to_dict(object_id)
+            mask = self.dcl_to_binary_mask(object_id)
+            centroid = self.binary_mask_to_centroid(mask)
+            bbox = self.binary_mask_to_bbox(mask)
+            polygon = self.binary_mask_to_polygon(mask)
+
+            # Save converted labels to dictionary
+            labels[object_id] = {'segment': seg,
+                                 'coordinate': centroid,
+                                 'bbox': bbox,
+                                 'polygon': polygon}
+
+        self.labels = labels
+
+    def get_object_ids(self):
+        return list(set(self.segments['cell']))
+
+    def segments_to_dict(self, object_id):
+        object_info = self.segments.loc[self.segments['cell'] == object_id]
+        list_of_dicts = []
+
+        for i in range(object_info.shape[0]):
+            value = object_info.iloc[i]['value']
+            time = object_info.iloc[i]['t']
+            channel = object_info.iloc[i]['c']
+            list_of_dicts.append({'value': value, 't': time, 'c': channel})
+
+        return list_of_dicts
+
+    def dcl_to_binary_mask(self, object_id):
+        object_info = self.segments.loc[self.segments['cell'] == object_id]
+        binary_mask = np.zeros(y.shape, dtype=y.dtype)
+
+        for i in range(object_info.shape[0]):
+            value = object_info.iloc[i]['value']
+            time = object_info.iloc[i]['t']
+            channel = object_info.iloc[i]['c']
+            binary_mask[time, ...] = np.where(self.y[time, ...] == value,
+                                              1, binary_mask[time, ...])
+
+        return binary_mask
+
+    def binary_mask_to_centroid(self, mask):
+        centroids = {}
+        for t in range(mask.shape[0]):
+            mt = mask[t]
+            if np.sum(mt.flatten()) > 0:
+                prop = regionprops(mt)[0]
+                centroids[t] = Point(prop.centroid[0], prop.centroid[1])
+
+        return centroids
+
+    def binary_mask_to_bbox(self, mask):
+        bboxes = {}
+        for t in range(mask.shape[0]):
+            mt = mask[t]
+            if np.sum(mt.flatten()) > 0:
+                prop = regionprops(mt)[0]
+                bboxes[t] = list(prop.bbox)
+
+        return bboxes 
+
+    def binary_mask_to_polygon(self, mask):
+        polygons = {}
+        for t in range(mask.shape[0]):
+            mt = mask[t]
+            if np.sum(mt.flatten()) > 0:
+                polygons[t] = mask_to_polygons(mt.astype('uint8'))
+
+        return polygons
