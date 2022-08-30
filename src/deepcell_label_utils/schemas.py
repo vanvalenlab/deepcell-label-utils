@@ -111,8 +111,8 @@ class SpatialLabelSchema(OrderedSchema):
     segment = fields.List(
         fields.Dict(
             keys=fields.Str(required=True,
-                            validate=OneOf(['value', 't', 'c']),
-            value=fields.Int())
+                            validate=OneOf(['value', 't', 'c'])),
+            value=fields.Int()
         )
     )
 
