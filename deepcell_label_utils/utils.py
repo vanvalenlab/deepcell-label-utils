@@ -39,8 +39,8 @@ def mask_to_polygons(mask, epsilon=1e-3, min_area=10., approx=True):
 
     # first, find contours with cv2: it's much faster than shapely
     contours, hierarchy = cv2.findContours(mask,
-                                  cv2.RETR_CCOMP,
-                                  cv2.CHAIN_APPROX_SIMPLE)
+                                           cv2.RETR_CCOMP,
+                                           cv2.CHAIN_APPROX_SIMPLE)
 
     if contours and approx:
         contours = [cv2.approxPolyDP(cnt, epsilon * cv2.arcLength(cnt, True), True)
