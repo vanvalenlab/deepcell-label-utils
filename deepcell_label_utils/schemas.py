@@ -46,42 +46,94 @@ class SegmentSchema(OrderedSchema):
     segments = fields.List(fields.Integer(), description='Segments')
 
 
-class MaskSchema(OrderedSchema):
-    """Schema for binary masks - expects COO formated sparse array"""
-    coords = fields.List(fields.List(fields.Integer()),
-                         description='Coordinate array')
-    data = fields.List(fields.Integer(), description='Data array')
+class PointSchema(OrderedSchema):
+    type = fields.Str(
+        required=True,
+        validate=OneOf(
+            ['Point'],
+            error='Invalid point type'
+        )
+    )
 
-
-class CoordinateSchema(OrderedSchema):
-    """Schema for 2D coordinate labels"""
-    x = fields.Float(required=True)
-    y = fields.Float(required=True)
-    z = fields.Float()
-
-
-class BboxSchema(OrderedSchema):
-    """Schema for bounding box labels"""
-    minr = fields.Float(required=True)
-    minc = fields.Float(required=True)
-    maxr = fields.Float(required=True)
-    maxc = fields.Float(required=True)
+    coordinates = fields.Tuple((fields.Float(), fields.Float()), required=True)
 
 
 class PolygonSchema(OrderedSchema):
-    """Schema for polygon labels"""
-    polygon = fields.List(fields.Tuple((fields.Float(), fields.Float())),
-                          description='Polygon')
+    type = fields.Str(
+        required=True,
+        validate=OneOf(
+            ['Polygon'],
+            error='Invalid polygon type'
+        )
+    )
+
+    coordinates = fields.List(
+        fields.List(
+            fields.Tuple((fields.Float(), fields.Float()), required=True),
+            required=True
+        ),
+        required=True
+    )
 
 
-class SpatialSchema(OrderedSchema):
+class MultiPolygonSchema(OrderedSchema):
+    type = fields.Str(
+        required=True,
+        validate=OneOf(
+            ['MultiPolygon'],
+            error='Invalid multi polygon type'
+        )
+    )
+
+    coordinates = fields.List(
+        fields.List(
+            fields.List(
+                fields.Tuple((fields.Float(),
+                              fields.Float()),
+                             required=True),
+                required=True
+            ),
+            required=True,
+        ),
+        required=True
+    )
+
+
+class BboxSchema(OrderedSchema):
+    bbox = fields.List(
+        fields.Float(required=True),
+        required=True
+    )
+
+
+class SpatialLabelSchema(OrderedSchema):
     """Schema for spatial labels"""
+    segment = fields.List(
+        fields.Dict(
+            keys=fields.Str(required=True,
+                            validate=OneOf(['value', 't', 'c'])),
+            value=fields.Int()
+        )
+    )
 
-    segments = fields.List(fields.Int(), description='Segments')
-    mask = fields.Dict(keys=fields.Int(), values=fields.Nested(MaskSchema))
-    xy = fields.List(fields.Dict(keys=fields.Int(), values=fields.Nested(CoordinateSchema)))
-    bbox = fields.Dict(keys=fields.Int(), values=fields.Nested(BboxSchema))
-    polygon = fields.Dict(keys=fields.Int(), values=fields.Nested(PolygonSchema))
+    coordinate = fields.Dict(
+        keys=fields.Int(),
+        values=fields.Nested(PointSchema)
+    )
+
+    bbox = fields.Dict(
+        keys=fields.Int(),
+        values=fields.List(
+            fields.Float(
+                required=True),
+            required=True)
+    )
+
+    polygon = fields.Dict(
+        keys=fields.Int(),
+        values=fields.Nested(MultiPolygonSchema),
+        description='Polygon'
+    )
 
 
 """
@@ -89,33 +141,47 @@ Node schemas
 """
 
 
+class NodeSchema(OrderedSchema):
+    """Schema for nodes in scene graph"""
+
+    ID = fields.Integer(description='Node ID')
+    type = fields.Str(
+        required=True,
+        validate=OneOf(
+            ['cell', 'debris', 'ftu']
+        )
+    )
+
+
 class CompartmentSchema(OrderedSchema):
     """Schema for compartments that contain spatial labels"""
 
-    name = fields.Str()
+    ID = fields.Integer(description='Compartment ID')
+    type = fields.Str(
+        required=True,
+        validate=OneOf(
+            ['nuclei', 'whole-cell']
+        )
+    )
     spatial_label = fields.Nested(SpatialLabelSchema())
 
 
-class CellSchema(OrderedSchema):
+class CellSchema(NodeSchema):
     """ Fields specific to cell data entries"""
-
-    ID = fields.Integer(description='Node ID')
-    mapping = fields.List(description='Mapping to allow for vector embeddings for cells')
+    frames = fields.List(fields.Int(), description='Frames this cell appears in')
     spatial_label = fields.List(fields.Nested(CompartmentSchema()),
                                 description='Spatial labels')
 
 
-class DebrisSchema(OrderedSchema):
+class DebrisSchema(NodeSchema):
     """Fields specific to debris entry"""
 
-    ID = fields.Integer(description='Node ID')
     spatial_label = fields.Nested(SpatialLabelSchema())
 
 
-class FunctionalTissueUnitSchema(OrderedSchema):
+class FunctionalTissueUnitSchema(NodeSchema):
     """Fields specific to functional tissue units"""
 
-    ID = fields.Integer(description='Node ID')
     spatial_label = fields.Nested((SpatialLabelSchema()))
 
 
@@ -129,7 +195,7 @@ class CellDivisionSchema(OrderedSchema):
 
     ID = fields.Integer(description='Edge ID')
     parent_id = fields.Integer(description='Parent ID')
-    child_id = fields.List(description='Child IDs')
+    child_id = fields.List(fields.Integer(), description='Child IDs')
     frame = fields.Str(description='Frame at which division occured')
 
 
@@ -137,3 +203,5 @@ class LineageSchema(OrderedSchema):
     """Fields specific to object lineage"""
 
     ID = fields.Integer(description='Edge ID')
+    parent_id = fields.Integer(description='Parent ID')
+    child_id = fields.List(fields.Integer(), description='Child IDs')
