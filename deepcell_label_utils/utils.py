@@ -7,7 +7,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.github.com/vanvalenlab/tf-keras-retinanet/LICENSE
+#     http://www.github.com/vanvalenlab/deepcell-label-utils/LICENSE
 #
 # The Work provided may be used for non-commercial academic purposes only.
 # For any other use of the Work, including commercial use, please contact:
@@ -39,8 +39,8 @@ def mask_to_polygons(mask, epsilon=1e-3, min_area=10., approx=True):
 
     # first, find contours with cv2: it's much faster than shapely
     contours, hierarchy = cv2.findContours(mask,
-                                  cv2.RETR_CCOMP,
-                                  cv2.CHAIN_APPROX_SIMPLE)
+                                           cv2.RETR_CCOMP,
+                                           cv2.CHAIN_APPROX_SIMPLE)
 
     if contours and approx:
         contours = [cv2.approxPolyDP(cnt, epsilon * cv2.arcLength(cnt, True), True)
@@ -169,7 +169,7 @@ class SpatialLabelConverter(object):
                 prop = regionprops(mt)[0]
                 bboxes[t] = list(prop.bbox)
 
-        return bboxes 
+        return bboxes
 
     def binary_mask_to_polygon(self, mask):
         polygons = {}
