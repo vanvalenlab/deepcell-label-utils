@@ -97,8 +97,8 @@ def test_binary_mask_to_centroid():
     # Test case where num_channels > 1
     i = 100
     y = np.ones((1, i, i, 2), dtype=np.int8)
-    y[:, :, i//2:i, 0] = 2
-    y[:, :, i//2:i, 1] = 3
+    y[:, :, i // 2:i, 0] = 2
+    y[:, :, i // 2:i, 1] = 3
     X = np.zeros((1, i, i, 2))
     segments = pd.DataFrame([{'cell': 1, 'value': 1, 'c': 0, 't': 0},
                              {'cell': 2, 'value': 2, 'c': 0, 't': 0},

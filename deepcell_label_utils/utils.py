@@ -151,8 +151,8 @@ class SpatialLabelConverter(object):
             time = object_info.iloc[i]['t']
             channel = object_info.iloc[i]['c']
             binary_mask[time, ..., channel] = np.where(
-                                        self.y[time, ..., channel] == value,
-                                        1, binary_mask[time, ..., channel])
+                self.y[time, ..., channel] == value,
+                1, binary_mask[time, ..., channel])
 
         return binary_mask
 
