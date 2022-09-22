@@ -42,7 +42,8 @@ with open(os.path.join(here, 'requirements.txt'), 'r') as f:
 
 VERSION = '0.0.1'
 NAME = 'DeepCell_Label_Utils'
-DESCRIPTION = 'Utility functions for reading and writing DeepCell annotated files.'
+DESCRIPTION = 'Utility functions for reading and \
+    writing DeepCell annotated files.'
 LICENSE = 'LICENSE'
 AUTHOR = 'Van Valen Lab'
 AUTHOR_EMAIL = 'vanvalenlab@gmail.com'

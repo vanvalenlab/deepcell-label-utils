@@ -25,12 +25,12 @@
 # ==============================================================================
 """Label utils"""
 
-import json
+# import json
 # import geojson
 import numpy as np
 import cv2
 
-from shapely.geometry import MultiPolygon, Polygon, Point, mapping
+from shapely.geometry import MultiPolygon, Polygon, Point  # , mapping
 from collections import defaultdict
 from skimage.measure import regionprops
 
@@ -100,7 +100,7 @@ class SpatialLabelConverter(object):
     """Label converter class for DeepCell Label label format. Converts
     DCL labels into binary masks, centroids, bboxes, and polygons"""
 
-    def __init__(self, X, y, segments):
+    def __init__(self, X, y, segments, test_no_poly=False):
         self.X = X
         self.y = y
         self.segments = segments
@@ -115,12 +115,15 @@ class SpatialLabelConverter(object):
             mask = self.dcl_to_binary_mask(object_id)
             centroid = self.binary_mask_to_centroid(mask)
             bbox = self.binary_mask_to_bbox(mask)
-            # polygon = self.binary_mask_to_polygon(mask)
+            if not test_no_poly:
+                polygon = self.binary_mask_to_polygon(mask)
 
             # Save converted labels to dictionary
             labels[object_id] = {'segment': seg,
                                  'coordinate': centroid,
-                                 'bbox': bbox}  # 'polygon': polygon}
+                                 'bbox': bbox}
+            if not test_no_poly:
+                labels[object_id]['polygon'] = polygon
 
         self.labels = labels
 
@@ -147,8 +150,9 @@ class SpatialLabelConverter(object):
             value = object_info.iloc[i]['value']
             time = object_info.iloc[i]['t']
             channel = object_info.iloc[i]['c']
-            binary_mask[time, ..., channel] = np.where(self.y[time, ..., channel] == value,
-                                                       1, binary_mask[time, ..., channel])
+            binary_mask[time, ..., channel] = np.where(
+                                        self.y[time, ..., channel] == value,
+                                        1, binary_mask[time, ..., channel])
 
         return binary_mask
 
@@ -185,7 +189,7 @@ class SpatialLabelConverter(object):
         for t in range(mask.shape[0]):
             channels = {}
             for c in range(mask.shape[3]):
-                mt = mask[t]
+                mt = mask[t, ..., c]
                 if np.sum(mt.flatten()) > 0:
                     poly = mask_to_polygons(mt.astype('uint8'))
                     channels[c] = poly
