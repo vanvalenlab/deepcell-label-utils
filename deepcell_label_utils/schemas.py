@@ -137,8 +137,11 @@ class SpatialLabelSchema(OrderedSchema):
 
     polygon = fields.Dict(
         keys=fields.Int(),
-        values=fields.Nested(MultiPolygonSchema),
-        description='Polygon'
+        values=fields.Dict(
+            keys=fields.Int(),
+            values=fields.Nested(MultiPolygonSchema),
+            description='Polygon'
+        )
     )
 
 
