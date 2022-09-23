@@ -118,21 +118,30 @@ class SpatialLabelSchema(OrderedSchema):
 
     coordinate = fields.Dict(
         keys=fields.Int(),
-        values=fields.Nested(PointSchema)
+        values=fields.Dict(
+            keys=fields.Int(),
+            values=fields.Nested(PointSchema)
+        )
     )
 
     bbox = fields.Dict(
         keys=fields.Int(),
-        values=fields.List(
-            fields.Float(
-                required=True),
-            required=True)
+        values=fields.Dict(
+            keys=fields.Int(),
+            values=fields.List(
+                fields.Float(
+                    required=True),
+                required=True)
+        )
     )
 
     polygon = fields.Dict(
         keys=fields.Int(),
-        values=fields.Nested(MultiPolygonSchema),
-        description='Polygon'
+        values=fields.Dict(
+            keys=fields.Int(),
+            values=fields.Nested(MultiPolygonSchema),
+            description='Polygon'
+        )
     )
 
 
@@ -168,7 +177,8 @@ class CompartmentSchema(OrderedSchema):
 
 class CellSchema(NodeSchema):
     """ Fields specific to cell data entries"""
-    frames = fields.List(fields.Int(), description='Frames this cell appears in')
+    frames = fields.List(fields.Int(), description='Frames this \
+        cell appears in')
     spatial_label = fields.List(fields.Nested(CompartmentSchema()),
                                 description='Spatial labels')
 

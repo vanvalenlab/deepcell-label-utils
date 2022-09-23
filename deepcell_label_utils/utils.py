@@ -25,13 +25,11 @@
 # ==============================================================================
 """Label utils"""
 
-import json
-import geojson
-import numpy as np
-import cv2
-
-from shapely.geometry import MultiPolygon, Polygon, Point, mapping
 from collections import defaultdict
+import cv2
+import numpy as np
+from shapely.geometry import MultiPolygon, Polygon, Point
+from skimage.measure import regionprops
 
 
 def mask_to_polygons(mask, epsilon=1e-3, min_area=10., approx=True):
@@ -43,7 +41,8 @@ def mask_to_polygons(mask, epsilon=1e-3, min_area=10., approx=True):
                                            cv2.CHAIN_APPROX_SIMPLE)
 
     if contours and approx:
-        contours = [cv2.approxPolyDP(cnt, epsilon * cv2.arcLength(cnt, True), True)
+        contours = [cv2.approxPolyDP(cnt,
+                                     epsilon * cv2.arcLength(cnt, True), True)
                     for cnt in contours]
 
     if not contours:
@@ -98,7 +97,7 @@ class SpatialLabelConverter(object):
     """Label converter class for DeepCell Label label format. Converts
     DCL labels into binary masks, centroids, bboxes, and polygons"""
 
-    def __init__(self, X, y, segments):
+    def __init__(self, X, y, segments, test_no_poly=False):
         self.X = X
         self.y = y
         self.segments = segments
@@ -113,13 +112,16 @@ class SpatialLabelConverter(object):
             mask = self.dcl_to_binary_mask(object_id)
             centroid = self.binary_mask_to_centroid(mask)
             bbox = self.binary_mask_to_bbox(mask)
-            polygon = self.binary_mask_to_polygon(mask)
+            # test_no_poly for unit tests below min_area for polygons
+            if not test_no_poly:
+                polygon = self.binary_mask_to_polygon(mask)
 
             # Save converted labels to dictionary
             labels[object_id] = {'segment': seg,
                                  'coordinate': centroid,
-                                 'bbox': bbox,
-                                 'polygon': polygon}
+                                 'bbox': bbox}
+            if not test_no_poly:
+                labels[object_id]['polygon'] = polygon
 
         self.labels = labels
 
@@ -140,42 +142,55 @@ class SpatialLabelConverter(object):
 
     def dcl_to_binary_mask(self, object_id):
         object_info = self.segments.loc[self.segments['cell'] == object_id]
-        binary_mask = np.zeros(y.shape, dtype=y.dtype)
+        binary_mask = np.zeros(self.y.shape, dtype=self.y.dtype)
 
         for i in range(object_info.shape[0]):
             value = object_info.iloc[i]['value']
             time = object_info.iloc[i]['t']
             channel = object_info.iloc[i]['c']
-            binary_mask[time, ...] = np.where(self.y[time, ...] == value,
-                                              1, binary_mask[time, ...])
+            binary_mask[time, ..., channel] = np.where(
+                self.y[time, ..., channel] == value,
+                1, binary_mask[time, ..., channel])
 
         return binary_mask
 
     def binary_mask_to_centroid(self, mask):
         centroids = {}
         for t in range(mask.shape[0]):
-            mt = mask[t]
-            if np.sum(mt.flatten()) > 0:
-                prop = regionprops(mt)[0]
-                centroids[t] = Point(prop.centroid[0], prop.centroid[1])
+            channels = {}
+            for c in range(mask.shape[3]):
+                mt = mask[t, ..., c]
+                if np.sum(mt.flatten()) > 0:
+                    prop = regionprops(mt)[0]
+                    centroid = Point(prop.centroid[0], prop.centroid[1])
+                    channels[c] = centroid
+            centroids[t] = channels
 
         return centroids
 
     def binary_mask_to_bbox(self, mask):
         bboxes = {}
         for t in range(mask.shape[0]):
-            mt = mask[t]
-            if np.sum(mt.flatten()) > 0:
-                prop = regionprops(mt)[0]
-                bboxes[t] = list(prop.bbox)
+            channels = {}
+            for c in range(mask.shape[3]):
+                mt = mask[t, ..., c]
+                if np.sum(mt.flatten()) > 0:
+                    prop = regionprops(mt)[0]
+                    bbox = list(prop.bbox)
+                    channels[c] = bbox
+            bboxes[t] = channels
 
         return bboxes
 
     def binary_mask_to_polygon(self, mask):
         polygons = {}
         for t in range(mask.shape[0]):
-            mt = mask[t]
-            if np.sum(mt.flatten()) > 0:
-                polygons[t] = mask_to_polygons(mt.astype('uint8'))
+            channels = {}
+            for c in range(mask.shape[3]):
+                mt = mask[t, ..., c]
+                if np.sum(mt.flatten()) > 0:
+                    poly = mask_to_polygons(mt.astype('uint8'))
+                    channels[c] = poly
+            polygons[t] = channels
 
         return polygons
