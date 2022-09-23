@@ -107,10 +107,10 @@ class DCLZipConverter:
         Load in a file path for a zip exported from DeepCell Label and
         automatically reshape to BTZYXC.
         """
-        if zip_obj is not None:
-            zf = zip_obj
-        elif zip_path is not None:
+        if zip_path is not None:
             zf = zipfile.ZipFile(zip_path, 'r')
+        elif zip_obj is not None:
+            zf = zip_obj
         else:
             print("No zip specified...")
             return
