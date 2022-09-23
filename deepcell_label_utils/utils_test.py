@@ -1,8 +1,8 @@
-from utils import SpatialLabelConverter, mask_to_polygons, polygons_to_mask
-from shapely.geometry import Point
-
 import numpy as np
 import pandas as pd
+from shapely.geometry import Point
+
+from utils import SpatialLabelConverter, mask_to_polygons, polygons_to_mask
 
 
 def test_get_object_ids():
@@ -209,14 +209,3 @@ def test_binary_mask_to_polygon():
                                                      expected_2[::-1]]
     assert polygon_3.geoms[0].exterior.coords[:] in [expected_2,
                                                      expected_2[::-1]]
-
-
-if __name__ == '__main__':
-    test_get_object_ids()
-    test_segments_to_dict()
-    test_dcl_to_binary_mask()
-    test_binary_mask_to_centroid()
-    test_binary_mask_to_bbox()
-    test_mask_to_polygons()
-    test_polygons_to_mask()
-    test_binary_mask_to_polygon()

@@ -25,13 +25,10 @@
 # ==============================================================================
 """Label utils"""
 
-# import json
-# import geojson
-import numpy as np
-import cv2
-
-from shapely.geometry import MultiPolygon, Polygon, Point  # , mapping
 from collections import defaultdict
+import cv2
+import numpy as np
+from shapely.geometry import MultiPolygon, Polygon, Point
 from skimage.measure import regionprops
 
 
@@ -115,6 +112,7 @@ class SpatialLabelConverter(object):
             mask = self.dcl_to_binary_mask(object_id)
             centroid = self.binary_mask_to_centroid(mask)
             bbox = self.binary_mask_to_bbox(mask)
+            # test_no_poly for unit tests below min_area for polygons
             if not test_no_poly:
                 polygon = self.binary_mask_to_polygon(mask)
 
