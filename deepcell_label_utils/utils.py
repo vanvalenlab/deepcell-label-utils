@@ -26,10 +26,16 @@
 """Label utils"""
 
 from collections import defaultdict
+import io
+import json
+import zipfile
+
 import cv2
 import numpy as np
+import pandas as pd
 from shapely.geometry import MultiPolygon, Polygon, Point
 from skimage.measure import regionprops
+from tifffile import TiffFile
 
 
 def mask_to_polygons(mask, epsilon=1e-3, min_area=10., approx=True):
@@ -93,14 +99,100 @@ def polygons_to_mask(polygons, im_size):
     return img_mask
 
 
+class DCLZipConverter:
+    """Label converter class for DeepCell Label zip to usable formats."""
+
+    def __init__(self, zip_path=None, zip_obj=None):
+        """
+        Load in a file path for a zip exported from DeepCell Label and
+        automatically reshape to BTZYXC.
+        """
+        if zip_obj is not None:
+            zf = zip_obj
+        elif zip_path is not None:
+            zf = zipfile.ZipFile(zip_path, 'r')
+        else:
+            print("No zip specified...")
+            return
+        data = zf.read('X.ome.tiff')
+        bytes_io = io.BytesIO(data)
+        X_init = TiffFile(bytes_io).asarray(squeeze=False)
+        self.X_ome = self.reshape_DCL(X_init)  # Reshape from _CTYX_ to BTZYXC
+        self.X = self.to_TYXC(self.X_ome)      # Reshape to TYXC for SLC
+
+        data = zf.read('y.ome.tiff')
+        bytes_io = io.BytesIO(data)
+        y_init = TiffFile(bytes_io).asarray(squeeze=False)
+        self.y_ome = self.reshape_DCL(y_init)  # Reshape from _CTYX_ to BTZYXC
+        self.y = self.to_TYXC(self.y_ome)      # Reshape to TYXC for SLC
+
+        data = zf.read('cells.json')
+        cells = json.loads(data.decode('utf-8'))
+        self.cells = cells
+        self.segments = self.segments_to_df(self.cells)  # To df for SLC
+
+        data = zf.read('divisions.json')
+        divisions = json.loads(data.decode('utf-8'))
+        self.divisions = divisions
+
+        zf.close()
+
+    def reshape_DCL(self, arr):
+        """
+        Rearrange the axes of the DCL output tiffs to the lab
+        standard BTZYXC.
+
+        NOTE:
+            DCL currently puts the time axis in the Z dimension,
+            so the tiff shape is called CZYX but actually CTYX.
+        """
+        rearranged = np.transpose(arr, axes=[0, 2, 5, 3, 4, 1])
+        return rearranged
+
+    def to_TYXC(self, arr):
+        """
+        Convert a BTZYCX tiff array to TYXC. This allows for use
+        with the SpatialLabelConverter.
+
+        Raises:
+            ValueError: B and/or Z dimensions do not have length 1
+        """
+        try:
+            reshaped = np.squeeze(arr, axis=(0, 2))
+            if len(reshaped.shape) != 4:
+                raise ValueError
+            return reshaped
+        except ValueError:
+            print("Could not squeeze to TYXC, check dimensions.")
+
+    def segments_to_df(self, segments):
+        """
+        Convert segments list to Pandas dataframe. This allows
+        for use with the SpatialLabelConverter.
+        """
+        df = pd.DataFrame(segments)
+        return df
+
+
 class SpatialLabelConverter(object):
     """Label converter class for DeepCell Label label format. Converts
     DCL labels into binary masks, centroids, bboxes, and polygons"""
 
-    def __init__(self, X, y, segments, test_no_poly=False):
+    def __init__(self, X=None, y=None, segments=None,
+                 *, zip_path=None, zip_obj=None, test_no_poly=False):
         self.X = X
         self.y = y
         self.segments = segments
+        if zip_path is not None:
+            DCL = DCLZipConverter(zip_path=zip_path)
+            self.X = DCL.X
+            self.y = DCL.y
+            self.segments = DCL.segments
+        elif zip_obj is not None:
+            DCL = DCLZipConverter(zip_obj=zip_obj)
+            self.X = DCL.X
+            self.y = DCL.y
+            self.segments = DCL.segments
 
         # Get list of segments
         object_ids = self.get_object_ids()
