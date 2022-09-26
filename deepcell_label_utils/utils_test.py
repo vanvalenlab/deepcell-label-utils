@@ -8,7 +8,7 @@ import pytest
 from shapely.geometry import Point
 import tifffile
 
-from utils import DCLZipConverter, SpatialLabelConverter, \
+from utils import DCLZipLoader, SpatialLabelConverter, \
     mask_to_polygons, polygons_to_mask
 
 
@@ -253,7 +253,7 @@ class TestDCL:
 
     def test_reshape_DCL(self, zipfile):
         """ Test that ome.tiffs are being reshaped correctly. """
-        DCL = DCLZipConverter(zip_obj=zipfile)
+        DCL = DCLZipLoader(zip_obj=zipfile)
         expected_y = np.ones((1, 2, 1, 10, 10, 3))
         expected_X = np.zeros((1, 2, 1, 10, 10, 3))
         assert np.array_equal(DCL.X_ome, expected_X)
@@ -261,7 +261,7 @@ class TestDCL:
 
     def test_segments_DCL(self, zipfile):
         """ Test that cells.json is being loaded properly. """
-        DCL = DCLZipConverter(zip_obj=zipfile)
+        DCL = DCLZipLoader(zip_obj=zipfile)
         expected = [{'cell': 1, 'value': 1, 'c': 0, 't': 0}]
         expected_df = pd.DataFrame(expected)
         assert DCL.cells == expected
@@ -269,13 +269,13 @@ class TestDCL:
 
     def test_divisons_DCL(self, zipfile):
         """ Test that divisions.json is being loaded properly. """
-        DCL = DCLZipConverter(zip_obj=zipfile)
+        DCL = DCLZipLoader(zip_obj=zipfile)
         expected = []
         assert DCL.divisions == expected
 
     def test_to_TYXC(self, zipfile):
         """ Test that y and X are converted to TYXC properly. """
-        DCL = DCLZipConverter(zip_obj=zipfile)
+        DCL = DCLZipLoader(zip_obj=zipfile)
         expected_y = np.ones((2, 10, 10, 3))
         expected_X = np.zeros((2, 10, 10, 3))
         assert np.array_equal(DCL.X, expected_X)

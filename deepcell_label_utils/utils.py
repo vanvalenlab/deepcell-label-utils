@@ -38,6 +38,11 @@ from skimage.measure import regionprops
 from tifffile import TiffFile
 
 
+class InputError(Exception):
+    """Raised when valid inputs are not provided."""
+    pass
+
+
 def mask_to_polygons(mask, epsilon=1e-3, min_area=10., approx=True):
     """Convert a mask ndarray (binarized image) to Multipolygons"""
 
@@ -99,37 +104,41 @@ def polygons_to_mask(polygons, im_size):
     return img_mask
 
 
-class DCLZipConverter:
+class DCLZipLoader:
     """Label converter class for DeepCell Label zip to usable formats."""
 
-    def __init__(self, zip_path=None, zip_obj=None):
+    def __init__(self, zip_path=None, zip_obj=None,
+                 in_shape='BCTYXZ', out_shape='BTZYXC'):
         """
         Load in a file path for a zip exported from DeepCell Label and
         automatically reshape to BTZYXC.
         """
-        if zip_path is not None:
+        if zip_path and zip_obj:
+            raise InputError("Only one of zip_path and zip_obj can be specified")
+        elif zip_path:
             zf = zipfile.ZipFile(zip_path, 'r')
-        elif zip_obj is not None:
+        elif zip_obj:
             zf = zip_obj
         else:
-            print("No zip specified...")
-            return
+            raise InputError("Either zip_path or zip_obj must be specified")
         data = zf.read('X.ome.tiff')
         bytes_io = io.BytesIO(data)
         X_init = TiffFile(bytes_io).asarray(squeeze=False)
-        self.X_ome = self.reshape_DCL(X_init)  # Reshape from _CTYX_ to BTZYXC
-        self.X = self.to_TYXC(self.X_ome)      # Reshape to TYXC for SLC
+        self.X_ome = self.reshape_DCL(X_init,
+                                      in_shape, out_shape)  # Reshape from _CTYX_ to BTZYXC
+        self.X = self.to_TYXC(self.X_ome)                   # Reshape to TYXC for SLC
 
         data = zf.read('y.ome.tiff')
         bytes_io = io.BytesIO(data)
         y_init = TiffFile(bytes_io).asarray(squeeze=False)
-        self.y_ome = self.reshape_DCL(y_init)  # Reshape from _CTYX_ to BTZYXC
-        self.y = self.to_TYXC(self.y_ome)      # Reshape to TYXC for SLC
+        self.y_ome = self.reshape_DCL(y_init,
+                                      in_shape, out_shape)  # Reshape from _CTYX_ to BTZYXC
+        self.y = self.to_TYXC(self.y_ome)                   # Reshape to TYXC for SLC
 
         data = zf.read('cells.json')
         cells = json.loads(data.decode('utf-8'))
         self.cells = cells
-        self.segments = self.segments_to_df(self.cells)  # To df for SLC
+        self.segments = pd.DataFrame(self.cells)  # To df for SLC
 
         data = zf.read('divisions.json')
         divisions = json.loads(data.decode('utf-8'))
@@ -137,16 +146,35 @@ class DCLZipConverter:
 
         zf.close()
 
-    def reshape_DCL(self, arr):
+    def reshape_DCL(self, arr, in_shape='BCTYXZ', out_shape='BTZYXC'):
         """
-        Rearrange the axes of the DCL output tiffs to the lab
-        standard BTZYXC.
+        Rearrange the axes of the DCL output tiffs from an input
+        shape specified to return an ndarray with specified output
+        shape. By default, rearranges from the DCL output _CTYX_ to
+        the lab standard BTZYXC.
 
         NOTE:
             DCL currently puts the time axis in the Z dimension,
-            so the tiff shape is called CZYX but actually CTYX.
+            so the tiff shape is called CZYX but is actually CTYX.
         """
-        rearranged = np.transpose(arr, axes=[0, 2, 5, 3, 4, 1])
+        if len(in_shape) != 6 or len(out_shape) != 6:
+            raise InputError("Input and output shapes must have 6 dims.")
+        elif set(in_shape) != set(out_shape):
+            raise InputError("Input and output must share the same axes.")
+
+        # Get mapping of input shape
+        in_order = {}
+        counter = 0
+        for axis in in_shape:
+            in_order[axis] = counter
+            counter += 1
+        out_order = []
+
+        # Use input shape mapping to rearrange to output shape
+        for axis in out_shape:
+            out_order.append(in_order[axis])
+        rearranged = np.transpose(arr, axes=out_order)
+
         return rearranged
 
     def to_TYXC(self, arr):
@@ -157,21 +185,10 @@ class DCLZipConverter:
         Raises:
             ValueError: B and/or Z dimensions do not have length 1
         """
-        try:
-            reshaped = np.squeeze(arr, axis=(0, 2))
-            if len(reshaped.shape) != 4:
-                raise ValueError
-            return reshaped
-        except ValueError:
-            print("Could not squeeze to TYXC, check dimensions.")
-
-    def segments_to_df(self, segments):
-        """
-        Convert segments list to Pandas dataframe. This allows
-        for use with the SpatialLabelConverter.
-        """
-        df = pd.DataFrame(segments)
-        return df
+        reshaped = np.squeeze(arr, axis=(0, 2))
+        if len(reshaped.shape) != 4:
+            raise ValueError("Could not squeeze to TYXC, B and Z axes must have length 1.")
+        return reshaped
 
 
 class SpatialLabelConverter(object):
@@ -179,20 +196,16 @@ class SpatialLabelConverter(object):
     DCL labels into binary masks, centroids, bboxes, and polygons"""
 
     def __init__(self, X=None, y=None, segments=None,
-                 *, zip_path=None, zip_obj=None, test_no_poly=False):
-        self.X = X
-        self.y = y
-        self.segments = segments
-        if zip_path is not None:
-            DCL = DCLZipConverter(zip_path=zip_path)
+                 zip_path=None, zip_obj=None, test_no_poly=False):
+        try:
+            DCL = DCLZipLoader(zip_path=zip_path, zip_obj=zip_obj)
             self.X = DCL.X
             self.y = DCL.y
             self.segments = DCL.segments
-        elif zip_obj is not None:
-            DCL = DCLZipConverter(zip_obj=zip_obj)
-            self.X = DCL.X
-            self.y = DCL.y
-            self.segments = DCL.segments
+        except InputError:
+            self.X = X
+            self.y = y
+            self.segments = segments
 
         # Get list of segments
         object_ids = self.get_object_ids()
