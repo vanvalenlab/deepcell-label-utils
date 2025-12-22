@@ -1,5 +1,5 @@
 jsonschema2md==0.1.1
-marshmallow==3.9.1
+marshmallow==3.26.2
 marshmallow_jsonschema==0.11.1
 pandas
 scipy>=1.2.3,<2
